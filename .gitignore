@@ -1,0 +1,10 @@
+target
+*.rs.bk
+[._]*.sw[a-p]
+/target
+/doc
+/doc-build
+/.gdb_history
+**/*.iml
+**/*.idea
+**/.DS_Store
