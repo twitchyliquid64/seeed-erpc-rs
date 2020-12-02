@@ -6,7 +6,7 @@ use nom::{
 
 const BASIC_CODEC_VERSION: u8 = 1;
 
-/// header describing an RPC call to a specific service or handler
+/// Data precluding an RPC payload, describing which RPC it is and other metadata
 #[derive(Clone, Debug)]
 pub struct Header {
     pub service: Service,
