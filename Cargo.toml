@@ -1,6 +1,6 @@
 [package]
 name = "seeed-erpc"
-version = "0.0.2"
+version = "0.1.0"
 authors = [
     "Tom <twitchyliquid64@ciphersink.net>"
 ]
@@ -32,3 +32,4 @@ heapless = "0.5"
 bbqueue = "^0.4.11"
 nom = { version = "^6.0", default-features = false }
 generic-array = { version = "0.13" }
+no-std-net = "0.5"

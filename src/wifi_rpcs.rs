@@ -1,7 +1,10 @@
 #[allow(dead_code)]
 use super::{codec, ids, Err};
 use generic_array::{ArrayLength, GenericArray};
-use heapless::{consts::U18, String};
+use heapless::{
+    consts::{U18, U64},
+    String,
+};
 use nom::{
     lib::std::ops::RangeFrom, lib::std::ops::RangeTo, number::streaming, InputIter, InputLength,
     Slice,
@@ -81,141 +84,26 @@ impl super::RPC for IsScanning {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-#[allow(dead_code)]
-#[repr(u32)]
-pub enum BssType {
-    Infra = 0,
-    Adhoc = 1,
-    Any = 2,
-    Unknown = core::u32::MAX,
-}
-
-bitflags! {
-    pub struct Security: u32 {
-        const WEP_ENABLED = 1;
-        const TKIP_ENABLED = 2;
-        const AES_ENABLED = 4;
-        const AES_CMAC_ENABLED = 0x10;
-        const SHARED_ENABLED = 0x00008000;
-        const WPA_SECURITY = 0x00200000;
-        const WPA2_SECURITY = 0x00400000;
-        const WPA3_SECURITY = 0x00800000;
-        const WPS_ENABLED = 0x10000000;
-        const WEP_PSK = Self::WEP_ENABLED.bits;
-        const WEP_SHARED = Self::WEP_ENABLED.bits | Self::SHARED_ENABLED.bits;
-        const WPA_TKIP_PSK = Self::WPA_SECURITY.bits | Self::TKIP_ENABLED.bits;
-        const WPA_AES_PSK = Self::WPA_SECURITY.bits | Self::AES_ENABLED.bits;
-        const WPA2_AES_PSK  = Self::WPA2_SECURITY.bits | Self::AES_ENABLED.bits;
-        const WPA2_TKIP_PSK = Self::WPA2_SECURITY.bits | Self::TKIP_ENABLED.bits;
-        const WPA2_MIXED_PSK = Self::WPA2_SECURITY.bits | Self::AES_ENABLED.bits | Self::TKIP_ENABLED.bits;
-        const WPA_WPA2_MIXED = Self::WPA_SECURITY.bits | Self::WPA2_SECURITY.bits;
-        const WPA2_AES_CMAC = Self::WPA2_SECURITY.bits | Self::AES_CMAC_ENABLED.bits;
-        const WPS_OPEN = Self::WPS_ENABLED.bits;
-        const WPS_SECURE = Self::WPS_ENABLED.bits | Self::AES_ENABLED.bits;
-        const WPS3_AES_PSK = Self::WPA3_SECURITY.bits | Self::AES_ENABLED.bits;
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-#[allow(dead_code)]
-#[repr(u32)]
-pub enum WPS {
-    Default = 0x0000,
-    UserSpecifed = 0x0001,
-    MachineSpecified = 0x0002,
-    Rekey = 0x0003,
-    Pushbutton = 0x0004,
-    RegistrarSpecified = 0x0005,
-    None = 0x0006,
-    Wsc = 0x0007,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-#[allow(dead_code)]
-#[repr(u32)]
-pub enum Band {
-    _5Ghz = 0,
-    _24Ghz = 1,
-}
-
-#[derive(Copy, Clone)]
-#[repr(packed)]
-pub struct BSSID(pub [u8; 6]);
-
-impl core::fmt::Debug for BSSID {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let table = b"0123456789abcdef";
-
-        let mut out = [0u8; 12 + 6 - 1];
-        for i in 0..(12 + 6 - 1) {
-            let b = self.0[i / 3];
-            out[i] = match (i + 1) % 3 {
-                0 => ':' as u8,
-                1 => table[(b >> 4) as usize],
-                2 => table[(b & 0xf) as usize],
-                _ => '?' as u8,
-            }
-        }
-
-        f.write_str(core::str::from_utf8(&out).unwrap())
-    }
-}
-
-#[derive(Copy, Clone)]
-#[repr(packed)]
-pub struct SSID {
-    len: u8,
-    value: [u8; 33],
-}
-
-impl core::fmt::Debug for SSID {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Unused unsafe warning is erroneous: needed for safe_packed_borrows
-        #[allow(unused_unsafe)]
-        unsafe {
-            f.write_str(core::str::from_utf8(&self.value[..self.len as usize]).unwrap())
-        }
-    }
-}
-
-impl<N> Into<String<N>> for SSID
-where
-    N: heapless::ArrayLength<u8>,
-{
-    fn into(self) -> String<N> {
-        let mut out = String::new();
-        // Unused unsafe warning is erroneous: needed for safe_packed_borrows
-        #[allow(unused_unsafe)]
-        unsafe {
-            for i in 0..self.len as usize {
-                out.push(self.value[i] as char).ok();
-            }
-        }
-        out
-    }
-}
-
 /// Describes a wifi network or station discovered via scanning.
 #[derive(Copy, Clone)]
 #[repr(packed)]
 pub struct ScanResult {
     /// Service Set Identification (i.e. Name of Access Point)
-    pub ssid: SSID,
+    pub ssid: super::SSID,
     /// Basic Service Set Identification (i.e. MAC address of Access Point)
-    pub bssid: BSSID,
+    pub bssid: super::BSSID,
     /// Receive Signal Strength Indication in dBm. <-90=poor, >-30=Excellent
     pub rssi: i16,
     /// Network type
-    pub bss_type: BssType,
+    pub bss_type: super::BssType,
     /// Security type
-    pub security: Security,
+    pub security: super::Security,
     /// WPS type
-    pub wps: WPS,
+    pub wps: super::WPS,
     /// Channel
     pub chan: u32,
     /// Radio channel that the AP beacon was received on
-    pub band: Band,
+    pub band: super::Band,
 }
 
 impl core::fmt::Debug for ScanResult {
@@ -252,17 +140,17 @@ impl core::fmt::Debug for ScanResult {
 impl Default for ScanResult {
     fn default() -> Self {
         Self {
-            ssid: SSID {
+            ssid: super::SSID {
                 len: 0,
                 value: [0u8; 33],
             },
-            bssid: BSSID([0u8; 6]),
+            bssid: super::BSSID([0u8; 6]),
             rssi: 0,
-            bss_type: BssType::Any,
-            security: Security::empty(),
-            wps: WPS::Default,
+            bss_type: super::BssType::Any,
+            security: super::Security::empty(),
+            wps: super::WPS::Default,
             chan: 0,
-            band: Band::_24Ghz,
+            band: super::Band::_24Ghz,
         }
     }
 }
@@ -379,6 +267,130 @@ impl super::RPC for ScanStart {
         if hdr.msg_type != ids::MsgType::Reply
             || hdr.service != ids::Service::Wifi
             || hdr.request != ids::WifiRequest::ScanStart.into()
+        {
+            return Err(Err::NotOurs);
+        }
+
+        let (_, num) = streaming::le_i32(data)?;
+        Ok(num)
+    }
+}
+
+/// Turns on Wifi.
+pub struct WifiOn {
+    pub mode: super::WifiMode,
+}
+
+impl super::RPC for WifiOn {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn args(&self, buff: &mut heapless::Vec<u8, heapless::consts::U64>) {
+        let mode = self.mode as u32;
+        buff.extend_from_slice(&mode.to_le_bytes()).ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::Wifi,
+            request: ids::WifiRequest::TurnOn.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::Wifi
+            || hdr.request != ids::WifiRequest::TurnOn.into()
+        {
+            return Err(Err::NotOurs);
+        }
+
+        let (_, num) = streaming::le_i32(data)?;
+        Ok(num)
+    }
+}
+
+/// Turns off Wifi.
+pub struct WifiOff {}
+
+impl super::RPC for WifiOff {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::Wifi,
+            request: ids::WifiRequest::TurnOff.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::Wifi
+            || hdr.request != ids::WifiRequest::TurnOff.into()
+        {
+            return Err(Err::NotOurs);
+        }
+
+        let (_, num) = streaming::le_i32(data)?;
+        Ok(num)
+    }
+}
+
+/// Connects to the network with the provided properties.
+pub struct WifiConnect {
+    pub ssid: String<U64>,
+    pub password: String<U64>,
+    pub security: super::Security,
+    //key_id: u32,
+    pub semaphore: u32,
+}
+
+impl super::RPC for WifiConnect {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn args(&self, buff: &mut heapless::Vec<u8, U64>) {
+        buff.extend_from_slice(&(self.ssid.len() as u32).to_le_bytes())
+            .ok();
+        buff.extend_from_slice(self.ssid.as_ref()).ok();
+
+        // Write the nullable flag (0 = NotNull, 1 = Null)
+        buff.push(if self.password.len() > 0 { 0u8 } else { 1u8 })
+            .ok();
+        if self.password.len() > 0 {
+            buff.extend_from_slice(&(self.password.len() as u32).to_le_bytes())
+                .ok();
+            buff.extend_from_slice(self.password.as_ref()).ok();
+        }
+
+        buff.extend_from_slice(&(self.security.bits()).to_le_bytes())
+            .ok();
+        buff.extend_from_slice(&(0u32.wrapping_sub(1)).to_le_bytes())
+            .ok(); // key_id - always -1?
+        buff.extend_from_slice(&(self.semaphore).to_le_bytes()).ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::Wifi,
+            request: ids::WifiRequest::Connect.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::Wifi
+            || hdr.request != ids::WifiRequest::Connect.into()
         {
             return Err(Err::NotOurs);
         }

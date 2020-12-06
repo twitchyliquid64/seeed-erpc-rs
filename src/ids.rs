@@ -31,6 +31,7 @@ pub enum Service {
     BLEGapBone = 4,
     BLECallback = 13,
     Wifi = 14,
+    TCPIP = 15,
     WifiCallback = 18,
     Unknown = 255,
 }
@@ -44,6 +45,7 @@ impl From<u8> for Service {
             4 => Service::BLEGapBone,
             13 => Service::BLECallback,
             14 => Service::Wifi,
+            15 => Service::TCPIP,
             18 => Service::WifiCallback,
             _ => Service::Unknown,
         }
@@ -68,7 +70,14 @@ impl From<SystemRequest> for u8 {
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[allow(unused)]
 pub enum WifiRequest {
+    Connect = 1,
+    ConnectBSSID = 2,
+    Disconnect = 3,
+    IsConnectedToAP = 4,
+    IsUp = 5,
     GetMacAddress = 8,
+    TurnOn = 27,
+    TurnOff = 28,
     ScanStart = 64,
     IsScanning = 65,
     ScanGetAP = 66,
@@ -77,6 +86,36 @@ pub enum WifiRequest {
 
 impl From<WifiRequest> for u8 {
     fn from(r: WifiRequest) -> u8 {
+        r as u8
+    }
+}
+
+/// Wio Terminal request IDs for the TCPIP service
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[allow(unused)]
+pub enum TCPIPRequest {
+    AdapterInit = 1,
+    StaStart = 2,
+    APStart = 3,
+    Stop = 4,
+    Up = 5,
+    Down = 6,
+    GetIPInfo = 7,
+    SetIPInfo = 8,
+    SetDNSInfo = 9,
+    GetDNSInfo = 10,
+    DHCPServStart = 11,
+    DHCPServStop = 12,
+    DHCPClientStart = 13,
+    DHCPClientStop = 14,
+    SetHostname = 15,
+    GetHostname = 16,
+    GetMAC = 17,
+    SetMAC = 18,
+}
+
+impl From<TCPIPRequest> for u8 {
+    fn from(r: TCPIPRequest) -> u8 {
         r as u8
     }
 }
