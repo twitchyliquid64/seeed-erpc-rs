@@ -6,8 +6,8 @@ use heapless::{
     String,
 };
 use nom::{
-    lib::std::ops::RangeFrom, lib::std::ops::RangeTo, number::streaming, InputIter, InputLength,
-    Slice,
+    bytes::streaming::take, lib::std::ops::RangeFrom, lib::std::ops::RangeTo, number::streaming,
+    InputIter, InputLength, Slice,
 };
 
 /// Returns the mac address as a colon-separated hex string.
@@ -86,7 +86,6 @@ impl super::RPC for IsScanning {
 
 /// Describes a wifi network or station discovered via scanning.
 #[derive(Copy, Clone)]
-#[repr(packed)]
 pub struct ScanResult {
     /// Service Set Identification (i.e. Name of Access Point)
     pub ssid: super::SSID,
@@ -196,19 +195,41 @@ impl<N: ArrayLength<ScanResult>> super::RPC for ScanGetAP<N> {
             return Err(Err::NotOurs);
         }
 
-        let (data, l) = streaming::le_u32(data)?; // Binary len - returning 62 bytes per result
-        if l as usize != (core::mem::size_of::<ScanResult>() * N::to_usize()) {
+        let (mut data, l) = streaming::le_u32(data)?; // Binary len - returning 62 bytes per result
+        if l as usize != (62 * N::to_usize()) {
             return Err(Err::ResponseOverrun);
         }
 
+        use core::convert::TryInto;
         let mut res = GenericArray::<ScanResult, N>::default();
-
-        //let (data, ssid) = SSids::parse(data)?;
         for i in 0..N::to_usize() {
-            res[i] = unsafe { *((data.as_ptr() as *const ScanResult).offset(i as isize)) };
+            let (d, ssid_len) = streaming::le_u8(data)?;
+            let (d, ssid_data) = take(33usize)(d)?;
+            let (d, bssid) = take(6usize)(d)?;
+            let (d, rssi) = streaming::le_i16(d)?;
+            let (d, bss_type) = streaming::le_u32(d)?;
+            let (d, security) = streaming::le_u32(d)?;
+            let (d, wps) = streaming::le_u32(d)?;
+            let (d, chan) = streaming::le_u32(d)?;
+            let (d, band) = streaming::le_u32(d)?;
+
+            res[i] = ScanResult {
+                ssid: super::SSID {
+                    len: ssid_len,
+                    value: ssid_data.try_into().unwrap(),
+                },
+                bssid: super::BSSID(bssid.try_into().unwrap()),
+                rssi,
+                bss_type: bss_type.into(),
+                security: super::Security::from_bits_truncate(security),
+                wps: wps.into(),
+                chan,
+                band: band.into(),
+            };
+            data = d;
         }
 
-        let (_, ret_val) = streaming::le_i32(data.slice(core::mem::size_of::<ScanResult>()..))?;
+        let (_, ret_val) = streaming::le_i32(data)?;
         Ok((res, ret_val))
     }
 }

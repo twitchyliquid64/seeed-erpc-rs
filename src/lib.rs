@@ -88,6 +88,17 @@ pub enum BssType {
     Unknown = core::u32::MAX,
 }
 
+impl From<u32> for BssType {
+    fn from(orig: u32) -> Self {
+        match orig {
+            0 => return BssType::Infra,
+            1 => return BssType::Adhoc,
+            2 => return BssType::Any,
+            _ => return BssType::Unknown,
+        };
+    }
+}
+
 bitflags! {
     /// Specifies the security features of a network.
     pub struct Security: u32 {
@@ -128,6 +139,23 @@ pub enum WPS {
     RegistrarSpecified = 0x0005,
     None = 0x0006,
     Wsc = 0x0007,
+    Unknown = 0xffff,
+}
+
+impl From<u32> for WPS {
+    fn from(orig: u32) -> Self {
+        match orig {
+            0 => return WPS::Default,
+            1 => return WPS::UserSpecifed,
+            2 => return WPS::MachineSpecified,
+            3 => return WPS::Rekey,
+            4 => return WPS::Pushbutton,
+            5 => return WPS::RegistrarSpecified,
+            6 => return WPS::None,
+            7 => return WPS::Wsc,
+            _ => return WPS::Unknown,
+        };
+    }
 }
 
 /// Valid wifi bands.
@@ -137,6 +165,17 @@ pub enum WPS {
 pub enum Band {
     _5Ghz = 0,
     _24Ghz = 1,
+    Unknown = 0xffff,
+}
+
+impl From<u32> for Band {
+    fn from(orig: u32) -> Self {
+        match orig {
+            0 => return Band::_5Ghz,
+            1 => return Band::_24Ghz,
+            _ => return Band::Unknown,
+        };
+    }
 }
 
 /// The machine-readable network name (6-bytes).
