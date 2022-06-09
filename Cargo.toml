@@ -28,7 +28,7 @@ exclude = ["assets", "examples"]
 [dependencies]
 bitfield = "0.13"
 bitflags = "1.2"
-heapless = "0.5"
+heapless = ">= 0.5, < 0.7"
 bbqueue = "^0.4.11"
 nom = { version = "^6.0", default-features = false }
 generic-array = { version = "0.14" }
