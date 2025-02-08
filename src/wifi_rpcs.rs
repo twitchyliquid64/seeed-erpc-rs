@@ -1,10 +1,7 @@
 #[allow(dead_code)]
 use super::{codec, ids, Err};
 use generic_array::{ArrayLength, GenericArray};
-use heapless::{
-    consts::{U18, U64},
-    String,
-};
+use heapless::String;
 use nom::{
     bytes::streaming::take, lib::std::ops::RangeFrom, lib::std::ops::RangeTo, number::streaming,
     InputIter, InputLength, Slice,
@@ -14,7 +11,7 @@ use nom::{
 pub struct GetMacAddress {}
 
 impl super::RPC for GetMacAddress {
-    type ReturnValue = String<U18>;
+    type ReturnValue = String<18>;
     type Error = i32;
 
     fn header(&self, seq: u32) -> codec::Header {
@@ -38,7 +35,7 @@ impl super::RPC for GetMacAddress {
         if data.input_len() < 18 {
             return Err(Err::RPCErr(-1));
         }
-        let mut mac: String<U18> = String::new();
+        let mut mac: String<18> = String::new();
         for b in data.slice(RangeTo { end: 17 }).iter_elements() {
             mac.push(b as char).map_err(|_| Err::ResponseOverrun)?;
         }
@@ -181,7 +178,7 @@ impl<N: ArrayLength<ScanResult>> super::RPC for ScanGetAP<N> {
         }
     }
 
-    fn args(&self, buff: &mut heapless::Vec<u8, heapless::consts::U64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
         let num = N::to_u16().to_le_bytes();
         buff.extend_from_slice(&num).ok();
     }
@@ -306,7 +303,7 @@ impl super::RPC for WifiOn {
     type ReturnValue = i32;
     type Error = ();
 
-    fn args(&self, buff: &mut heapless::Vec<u8, heapless::consts::U64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
         let mode = self.mode as u32;
         buff.extend_from_slice(&mode.to_le_bytes()).ok();
     }
@@ -366,8 +363,8 @@ impl super::RPC for WifiOff {
 
 /// Connects to the network with the provided properties.
 pub struct WifiConnect {
-    pub ssid: String<U64>,
-    pub password: String<U64>,
+    pub ssid: String<64>,
+    pub password: String<64>,
     pub security: super::Security,
     //key_id: u32,
     pub semaphore: u32,
@@ -377,7 +374,7 @@ impl super::RPC for WifiConnect {
     type ReturnValue = i32;
     type Error = ();
 
-    fn args(&self, buff: &mut heapless::Vec<u8, U64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
         buff.extend_from_slice(&(self.ssid.len() as u32).to_le_bytes())
             .ok();
         buff.extend_from_slice(self.ssid.as_ref()).ok();

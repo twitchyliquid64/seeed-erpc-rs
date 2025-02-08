@@ -1,12 +1,12 @@
 use super::{codec, ids, Err};
-use heapless::{consts::U16, String};
+use heapless::String;
 use nom::{number::streaming, InputIter};
 
 /// Returns a string indicating the firmware version on the wifi chip.
 pub struct GetVersion {}
 
 impl super::RPC for GetVersion {
-    type ReturnValue = String<U16>;
+    type ReturnValue = String<16>;
     type Error = ();
 
     fn header(&self, seq: u32) -> codec::Header {
@@ -18,7 +18,7 @@ impl super::RPC for GetVersion {
         }
     }
 
-    fn parse(&mut self, data: &[u8]) -> Result<String<U16>, Err<()>> {
+    fn parse(&mut self, data: &[u8]) -> Result<String<16>, Err<()>> {
         let (data, hdr) = codec::Header::parse(data)?;
         if hdr.msg_type != ids::MsgType::Reply
             || hdr.service != ids::Service::System

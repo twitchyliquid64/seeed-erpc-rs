@@ -41,7 +41,7 @@ impl super::RPC for DHCPClientStop {
     type ReturnValue = i32;
     type Error = ();
 
-    fn args(&self, buff: &mut heapless::Vec<u8, heapless::consts::U64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
         let interface_id = self.interface as u32;
         buff.extend_from_slice(&interface_id.to_le_bytes()).ok();
     }
@@ -78,7 +78,7 @@ impl super::RPC for DHCPClientStart {
     type ReturnValue = i32;
     type Error = ();
 
-    fn args(&self, buff: &mut heapless::Vec<u8, heapless::consts::U64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
         let interface_id = self.interface as u32;
         buff.extend_from_slice(&interface_id.to_le_bytes()).ok();
     }
@@ -124,7 +124,7 @@ impl super::RPC for GetIPInfo {
         }
     }
 
-    fn args(&self, buff: &mut heapless::Vec<u8, heapless::consts::U64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
         let interface_id = self.interface as u32;
         buff.extend_from_slice(&interface_id.to_le_bytes()).ok();
     }
