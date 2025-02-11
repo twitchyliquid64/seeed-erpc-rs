@@ -41,7 +41,7 @@ pub trait RPC {
     type Error;
 
     fn header(&self, seq: u32) -> Header;
-    fn args(&self, _buff: &mut heapless::Vec<u8, heapless::consts::U64>) {}
+    fn args(&self, _buff: &mut heapless::Vec<u8, 64>) {}
 
     fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>>;
 }
@@ -220,10 +220,7 @@ impl core::fmt::Debug for SSID {
     }
 }
 
-impl<N> Into<String<N>> for SSID
-where
-    N: heapless::ArrayLength<u8>,
-{
+impl<const N: usize> Into<String<N>> for SSID {
     fn into(self) -> String<N> {
         let mut out = String::new();
         // Unused unsafe warning is erroneous: needed for safe_packed_borrows
