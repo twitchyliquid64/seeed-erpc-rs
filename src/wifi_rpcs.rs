@@ -417,3 +417,29 @@ impl super::RPC for WifiConnect {
         Ok(num)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RPC;
+
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
+    #[test]
+    fn mac_address() {
+        init();
+        let mut input_bytes = [42u8; 36];
+
+        input_bytes[0] = 2; // MsgType::Reply
+        input_bytes[1] = 8; // WifiRequest::GetMacAddress
+        input_bytes[2] = 14; // Service::Wifi
+
+        input_bytes[8..30].copy_from_slice(b"01:23:45:67:89:01x\0\0\0\0");
+
+        let parsed = GetMacAddress {}.parse(&input_bytes).expect("Parse failed");
+
+        assert_eq!(parsed, "01:23:45:67:89:01");
+    }
+}
