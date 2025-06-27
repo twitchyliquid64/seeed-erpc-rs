@@ -2,10 +2,7 @@
 use super::{codec, ids, Err};
 use generic_array::{ArrayLength, GenericArray};
 use heapless::String;
-use nom::{
-    bytes::streaming::take, lib::std::ops::RangeFrom, lib::std::ops::RangeTo, number::streaming,
-    InputIter, InputLength, Slice,
-};
+use nom::{bytes::streaming::take, number::streaming, Input};
 
 /// Returns the mac address as a colon-separated hex string.
 pub struct GetMacAddress {}
@@ -36,11 +33,11 @@ impl super::RPC for GetMacAddress {
             return Err(Err::RPCErr(-1));
         }
         let mut mac: String<18> = String::new();
-        for b in data.slice(RangeTo { end: 17 }).iter_elements() {
+        for b in data.take(17).iter_elements() {
             mac.push(b as char).map_err(|_| Err::ResponseOverrun)?;
         }
 
-        let (_, result) = streaming::le_u32(data.slice(RangeFrom { start: 18 }))?;
+        let (_, result) = streaming::le_u32(data.take_from(18))?;
         if result != 0 {
             Err(Err::RPCErr(result as i32))
         } else {
