@@ -2,10 +2,7 @@
 use super::{codec, ids, Err};
 use generic_array::{ArrayLength, GenericArray};
 use heapless::String;
-use nom::{
-    bytes::streaming::take, lib::std::ops::RangeFrom, lib::std::ops::RangeTo, number::streaming,
-    InputIter, InputLength, Slice,
-};
+use nom::{bytes::streaming::take, number::streaming, Input};
 
 /// Returns the mac address as a colon-separated hex string.
 pub struct GetMacAddress {}
@@ -36,11 +33,11 @@ impl super::RPC for GetMacAddress {
             return Err(Err::RPCErr(-1));
         }
         let mut mac: String<18> = String::new();
-        for b in data.slice(RangeTo { end: 17 }).iter_elements() {
+        for b in data.take(17).iter_elements() {
             mac.push(b as char).map_err(|_| Err::ResponseOverrun)?;
         }
 
-        let (_, result) = streaming::le_u32(data.slice(RangeFrom { start: 18 }))?;
+        let (_, result) = streaming::le_u32(data.take_from(18))?;
         if result != 0 {
             Err(Err::RPCErr(result as i32))
         } else {
@@ -415,5 +412,31 @@ impl super::RPC for WifiConnect {
 
         let (_, num) = streaming::le_i32(data)?;
         Ok(num)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RPC;
+
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
+    #[test]
+    fn mac_address() {
+        init();
+        let mut input_bytes = [42u8; 36];
+
+        input_bytes[0] = 2; // MsgType::Reply
+        input_bytes[1] = 8; // WifiRequest::GetMacAddress
+        input_bytes[2] = 14; // Service::Wifi
+
+        input_bytes[8..30].copy_from_slice(b"01:23:45:67:89:01x\0\0\0\0");
+
+        let parsed = GetMacAddress {}.parse(&input_bytes).expect("Parse failed");
+
+        assert_eq!(parsed, "01:23:45:67:89:01");
     }
 }

@@ -1,6 +1,6 @@
 use super::{codec, ids, Err};
 use heapless::String;
-use nom::{number::streaming, InputIter};
+use nom::{number::streaming, Input};
 
 /// Returns a string indicating the firmware version on the wifi chip.
 pub struct GetVersion {}

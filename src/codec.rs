@@ -1,8 +1,5 @@
 use super::ids::*;
-use nom::{
-    error::ParseError, lib::std::ops::RangeFrom, number::streaming, IResult, InputIter,
-    InputLength, Slice,
-};
+use nom::{error::ParseError, number::streaming, IResult, Input};
 
 const BASIC_CODEC_VERSION: u8 = 1;
 
@@ -34,7 +31,7 @@ impl Header {
     /// Decodes an RPC header from a byte slice or other compatible type
     pub fn parse<I, E: ParseError<I>>(i: I) -> IResult<I, Self, E>
     where
-        I: Slice<RangeFrom<usize>> + InputIter<Item = u8> + InputLength,
+        I: Input<Item = u8>,
     {
         let (i, header) = streaming::le_u32(i)?;
         let (i, sequence) = streaming::le_u32(i)?;
@@ -76,7 +73,7 @@ impl FrameHeader {
     /// chained with other nom parsers.
     pub fn parse<I, E: ParseError<I>>(i: I) -> IResult<I, Self, E>
     where
-        I: Slice<RangeFrom<usize>> + InputIter<Item = u8> + InputLength,
+        I: Input<Item = u8>,
     {
         let (i, msg_length) = streaming::le_u16(i)?;
         let (i, crc16) = streaming::le_u16(i)?;
@@ -86,7 +83,7 @@ impl FrameHeader {
     /// Checks the CRC matches that computed from the provided payload.
     pub fn check_crc<I, E>(&self, data: I) -> Result<(), super::Err<E>>
     where
-        I: InputIter<Item = u8>,
+        I: Input<Item = u8>,
     {
         if crc16(data) == self.crc16 {
             Ok(())
@@ -99,7 +96,7 @@ impl FrameHeader {
 /// computes the CRC value used in the Wio Terminal eRPC codec
 pub(crate) fn crc16<I>(data: I) -> u16
 where
-    I: InputIter<Item = u8>,
+    I: Input<Item = u8>,
 {
     let mut crc: u32 = 0xEF4A;
 
