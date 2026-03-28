@@ -175,7 +175,7 @@ impl<N: ArrayLength<ScanResult>> super::RPC for ScanGetAP<N> {
         }
     }
 
-    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
         let num = N::to_u16().to_le_bytes();
         buff.extend_from_slice(&num).ok();
     }
@@ -300,7 +300,7 @@ impl super::RPC for WifiOn {
     type ReturnValue = i32;
     type Error = ();
 
-    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
         let mode = self.mode as u32;
         buff.extend_from_slice(&mode.to_le_bytes()).ok();
     }
@@ -371,7 +371,7 @@ impl super::RPC for WifiConnect {
     type ReturnValue = i32;
     type Error = ();
 
-    fn args(&self, buff: &mut heapless::Vec<u8, 64>) {
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
         buff.extend_from_slice(&(self.ssid.len() as u32).to_le_bytes())
             .ok();
         buff.extend_from_slice(self.ssid.as_ref()).ok();

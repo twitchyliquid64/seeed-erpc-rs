@@ -41,7 +41,7 @@ pub trait RPC {
     type Error;
 
     fn header(&self, seq: u32) -> Header;
-    fn args(&self, _buff: &mut heapless::Vec<u8, 64>) {}
+    fn args(&self, _buff: &mut heapless::Vec<u8, 256>) {}
 
     fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>>;
 }
@@ -49,12 +49,14 @@ pub trait RPC {
 mod system_rpcs;
 mod tcpip_rpcs;
 mod wifi_rpcs;
+mod lwip_rpcs;
 
 /// The RPCs which can be called to control the wifi.
 pub mod rpcs {
     pub use crate::system_rpcs::*;
     pub use crate::tcpip_rpcs::*;
     pub use crate::wifi_rpcs::*;
+    pub use crate::lwip_rpcs::*;
 }
 
 /// Specifies a layer 3 interface to be affected by the command.
@@ -241,3 +243,10 @@ pub struct IPInfo {
     pub netmask: Ipv4Addr,
     pub gateway: Ipv4Addr,
 }
+
+// Re-export lwip helpers and types for consumers
+pub use lwip_rpcs::{
+    encode_sockaddr_in, decode_sockaddr_in, RecvResult,
+    AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR,
+    F_SETFL, O_NONBLOCK, MSG_DONTWAIT,
+};
