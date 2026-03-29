@@ -5,8 +5,8 @@
 //! Seeed Arduino rpcUnified library implements the same calls in
 //! `lwip/sockets.c` using `rpc_lwip_*` functions.
 //!
-//! Only the subset needed for UDP communication is implemented here;
-//! TCP-specific calls can be added following the same pattern.
+//! UDP and TCP socket calls are implemented here;
+//! additional LwIP calls can be added following the same pattern.
 
 #[allow(dead_code)]
 use super::{codec, ids, Err};
@@ -16,6 +16,8 @@ use nom::{bytes::streaming::take, number::streaming};
 
 /// Address family: IPv4
 pub const AF_INET: i32 = 2;
+/// Socket type: stream (TCP)
+pub const SOCK_STREAM: i32 = 1;
 /// Socket type: datagram (UDP)
 pub const SOCK_DGRAM: i32 = 2;
 /// Socket option level: socket-level options
@@ -443,6 +445,294 @@ impl<'a> super::RPC for LwipSendto<'a> {
     }
 }
 
+// ── LwipListen ──────────────────────────────────────────────────────
+
+/// Mark a socket as a passive listener.
+///
+/// Equivalent to `listen(s, backlog)`.
+/// Returns 0 on success, -1 on error.
+pub struct LwipListen {
+    pub socket: i32,
+    pub backlog: i32,
+}
+
+impl super::RPC for LwipListen {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
+        buff.extend_from_slice(&self.socket.to_le_bytes()).ok();
+        buff.extend_from_slice(&self.backlog.to_le_bytes()).ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::LwIP,
+            request: ids::LwIPRequest::Listen.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::LwIP
+            || hdr.request != ids::LwIPRequest::Listen.into()
+        {
+            return Err(Err::NotOurs);
+        }
+        let (_, ret) = streaming::le_i32(data)?;
+        Ok(ret)
+    }
+}
+
+// ── LwipAccept ──────────────────────────────────────────────────────
+
+/// Accepted TCP connection with remote peer information.
+#[derive(Debug)]
+pub struct AcceptResult {
+    /// File descriptor for the newly accepted client socket.
+    pub client_fd: i32,
+    /// Remote peer IP address octets `[a, b, c, d]`.
+    pub remote_ip: [u8; 4],
+    /// Remote peer TCP port.
+    pub remote_port: u16,
+}
+
+/// Accept an incoming connection on a listening socket.
+///
+/// Equivalent to `accept(s, addr, addrlen)`.
+///
+/// The C++ eRPC shim sends:
+///   - `s` (i32)
+///   - `addr` as `const binary_t *` (u32 length + 16 zero bytes)
+///   - `*addrlen` (u32 = 16)
+///
+/// The response contains only:
+///   - `addrlen` (u32) — updated value
+///   - `result` (i32) — new client fd, or -1 on error
+///
+/// Note: the remote address is NOT returned over eRPC (the `addr`
+/// parameter is `const binary_t *`, i.e. input-only in the generated shim).
+pub struct LwipAccept {
+    pub socket: i32,
+}
+
+impl super::RPC for LwipAccept {
+    type ReturnValue = AcceptResult;
+    type Error = i32;
+
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
+        // write(s)
+        buff.extend_from_slice(&self.socket.to_le_bytes()).ok();
+        // write_binary_t_struct(codec, addr) — 16-byte zeroed sockaddr_in buffer
+        push_binary(buff, &[0u8; 16]);
+        // write(*addrlen) — sizeof(struct sockaddr) = 16
+        buff.extend_from_slice(&16u32.to_le_bytes()).ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::LwIP,
+            request: ids::LwIPRequest::Accept.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::LwIP
+            || hdr.request != ids::LwIPRequest::Accept.into()
+        {
+            return Err(Err::NotOurs);
+        }
+
+        // Response layout from RTL8720DN (matches C++ shim):
+        //   u32  addrlen  (updated value)
+        //   i32  result   (new client fd, or -1 on error)
+
+        let (data, _addrlen) = streaming::le_u32(data)?;
+        let (_, ret) = streaming::le_i32(data)?;
+
+        if ret < 0 {
+            return Err(Err::RPCErr(ret));
+        }
+
+        Ok(AcceptResult {
+            client_fd: ret,
+            remote_ip: [0u8; 4],
+            remote_port: 0,
+        })
+    }
+}
+
+// ── LwipConnect ─────────────────────────────────────────────────────
+
+/// Connect a socket to a remote address.
+///
+/// Equivalent to `connect(s, name, namelen)`.
+/// `name` is a `sockaddr_in` (16 bytes).
+/// Returns 0 on success, -1 on error.
+pub struct LwipConnect {
+    pub socket: i32,
+    /// Remote address as raw `sockaddr_in` (16 bytes). Use [`encode_sockaddr_in`].
+    pub name: [u8; 16],
+}
+
+impl super::RPC for LwipConnect {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
+        buff.extend_from_slice(&self.socket.to_le_bytes()).ok();
+        push_binary(buff, &self.name);
+        buff.extend_from_slice(&(self.name.len() as u32).to_le_bytes())
+            .ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::LwIP,
+            request: ids::LwIPRequest::Connect.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::LwIP
+            || hdr.request != ids::LwIPRequest::Connect.into()
+        {
+            return Err(Err::NotOurs);
+        }
+        let (_, ret) = streaming::le_i32(data)?;
+        Ok(ret)
+    }
+}
+
+// ── LwipRecv ────────────────────────────────────────────────────────
+
+/// Received TCP data from a connected socket.
+#[derive(Debug)]
+pub struct TcpRecvResult {
+    /// Payload bytes received.
+    pub data: heapless::Vec<u8, 256>,
+}
+
+/// Receive data from a connected (TCP) socket.
+///
+/// Equivalent to `recv(s, mem, len, flags)`.
+///
+/// The RTL8720DN firmware additionally takes a `timeout` parameter
+/// (in milliseconds) appended after `flags`.
+///
+/// Returns `TcpRecvResult` on success.  A return of 0 bytes indicates
+/// the peer has closed the connection.
+pub struct LwipRecv {
+    pub socket: i32,
+    pub len: u32,
+    pub flags: i32,
+    pub timeout_ms: u32,
+}
+
+impl super::RPC for LwipRecv {
+    type ReturnValue = TcpRecvResult;
+    type Error = i32;
+
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
+        buff.extend_from_slice(&self.socket.to_le_bytes()).ok();
+        buff.extend_from_slice(&self.len.to_le_bytes()).ok();
+        buff.extend_from_slice(&self.flags.to_le_bytes()).ok();
+        buff.extend_from_slice(&self.timeout_ms.to_le_bytes()).ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::LwIP,
+            request: ids::LwIPRequest::Recv.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::LwIP
+            || hdr.request != ids::LwIPRequest::Recv.into()
+        {
+            return Err(Err::NotOurs);
+        }
+
+        // Response layout from RTL8720DN:
+        //   binary_t mem  → u32 length + data bytes
+        //   i32      ret  (bytes received, 0 = peer closed, -1 = error)
+
+        let (data, mem_len) = streaming::le_u32(data)?;
+        let (data, mem_data) = take(mem_len as usize)(data)?;
+        let (_, ret) = streaming::le_i32(data)?;
+
+        if ret < 0 {
+            return Err(Err::RPCErr(ret));
+        }
+
+        let mut payload = heapless::Vec::new();
+        let copy_len = core::cmp::min(ret as usize, mem_len as usize);
+        payload.extend_from_slice(&mem_data[..copy_len]).ok();
+
+        Ok(TcpRecvResult { data: payload })
+    }
+}
+
+// ── LwipSend ────────────────────────────────────────────────────────
+
+/// Send data on a connected (TCP) socket.
+///
+/// Equivalent to `send(s, dataptr, size, flags)`.
+/// Returns the number of bytes sent on success, or -1 on error.
+pub struct LwipSend<'a> {
+    pub socket: i32,
+    pub data: &'a [u8],
+    pub flags: i32,
+}
+
+impl<'a> super::RPC for LwipSend<'a> {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn args(&self, buff: &mut heapless::Vec<u8, 256>) {
+        buff.extend_from_slice(&self.socket.to_le_bytes()).ok();
+        push_binary(buff, self.data);
+        buff.extend_from_slice(&self.flags.to_le_bytes()).ok();
+    }
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::LwIP,
+            request: ids::LwIPRequest::Send.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::LwIP
+            || hdr.request != ids::LwIPRequest::Send.into()
+        {
+            return Err(Err::NotOurs);
+        }
+        let (_, ret) = streaming::le_i32(data)?;
+        Ok(ret)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,5 +815,101 @@ mod tests {
         assert_eq!(&buf[0..4], &3i32.to_le_bytes()); // socket
         assert_eq!(&buf[4..8], &5u32.to_le_bytes()); // data length
         assert_eq!(&buf[8..13], b"hello"); // data payload
+    }
+
+    #[test]
+    fn tcp_socket_args_encoding() {
+        let rpc = LwipSocket {
+            domain: AF_INET,
+            socket_type: SOCK_STREAM,
+            protocol: 0,
+        };
+        let mut buf = heapless::Vec::<u8, 256>::new();
+        rpc.args(&mut buf);
+        assert_eq!(buf.len(), 12);
+        assert_eq!(&buf[0..4], &2i32.to_le_bytes()); // AF_INET
+        assert_eq!(&buf[4..8], &1i32.to_le_bytes()); // SOCK_STREAM
+        assert_eq!(&buf[8..12], &0i32.to_le_bytes()); // protocol
+    }
+
+    #[test]
+    fn listen_args_encoding() {
+        let rpc = LwipListen {
+            socket: 4,
+            backlog: 5,
+        };
+        let mut buf = heapless::Vec::<u8, 256>::new();
+        rpc.args(&mut buf);
+        // socket(4) + backlog(4) = 8 bytes
+        assert_eq!(buf.len(), 8);
+        assert_eq!(&buf[0..4], &4i32.to_le_bytes()); // socket fd
+        assert_eq!(&buf[4..8], &5i32.to_le_bytes()); // backlog
+    }
+
+    #[test]
+    fn accept_args_encoding() {
+        let rpc = LwipAccept {
+            socket: 4,
+        };
+        let mut buf = heapless::Vec::<u8, 256>::new();
+        rpc.args(&mut buf);
+        // socket(4) + binary_t addr(4 len + 16 zeros) + addrlen(4) = 28 bytes
+        assert_eq!(buf.len(), 28);
+        assert_eq!(&buf[0..4], &4i32.to_le_bytes()); // socket fd
+        assert_eq!(&buf[4..8], &16u32.to_le_bytes()); // binary_t length
+        assert_eq!(&buf[8..24], &[0u8; 16]); // zeroed sockaddr_in
+        assert_eq!(&buf[24..28], &16u32.to_le_bytes()); // addrlen
+    }
+
+    #[test]
+    fn connect_args_encoding() {
+        let addr = encode_sockaddr_in([10, 0, 0, 1], 8080);
+        let rpc = LwipConnect {
+            socket: 3,
+            name: addr,
+        };
+        let mut buf = heapless::Vec::<u8, 256>::new();
+        rpc.args(&mut buf);
+        // socket(4) + binary_t(4 len + 16 data) + namelen(4) = 28 bytes
+        assert_eq!(buf.len(), 28);
+        assert_eq!(&buf[0..4], &3i32.to_le_bytes()); // socket fd
+        assert_eq!(&buf[4..8], &16u32.to_le_bytes()); // binary_t length
+        assert_eq!(buf[9], AF_INET as u8); // sin_family
+    }
+
+    #[test]
+    fn recv_args_encoding() {
+        let rpc = LwipRecv {
+            socket: 5,
+            len: 256,
+            flags: MSG_DONTWAIT,
+            timeout_ms: 100,
+        };
+        let mut buf = heapless::Vec::<u8, 256>::new();
+        rpc.args(&mut buf);
+        // socket(4) + len(4) + flags(4) + timeout(4) = 16 bytes
+        assert_eq!(buf.len(), 16);
+        assert_eq!(&buf[0..4], &5i32.to_le_bytes()); // socket
+        assert_eq!(&buf[4..8], &256u32.to_le_bytes()); // len
+        assert_eq!(&buf[8..12], &MSG_DONTWAIT.to_le_bytes()); // flags
+        assert_eq!(&buf[12..16], &100u32.to_le_bytes()); // timeout_ms
+    }
+
+    #[test]
+    fn send_args_encoding() {
+        let payload = b"OT\x00\x01";
+        let rpc = LwipSend {
+            socket: 6,
+            data: payload,
+            flags: 0,
+        };
+        let mut buf = heapless::Vec::<u8, 256>::new();
+        rpc.args(&mut buf);
+        // socket(4) + binary_t data(4+4) + flags(4) = 16 bytes
+        assert_eq!(buf.len(), 16);
+        assert_eq!(&buf[0..4], &6i32.to_le_bytes()); // socket
+        assert_eq!(&buf[4..8], &4u32.to_le_bytes()); // data length
+        assert_eq!(&buf[8..12], payload); // data payload
+        assert_eq!(&buf[12..16], &0i32.to_le_bytes()); // flags
     }
 }

@@ -246,7 +246,8 @@ pub struct IPInfo {
 
 // Re-export lwip helpers and types for consumers
 pub use lwip_rpcs::{
-    encode_sockaddr_in, decode_sockaddr_in, RecvResult,
-    AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR,
+    encode_sockaddr_in, decode_sockaddr_in,
+    RecvResult, AcceptResult, TcpRecvResult,
+    AF_INET, SOCK_STREAM, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR,
     F_SETFL, O_NONBLOCK, MSG_DONTWAIT,
 };
