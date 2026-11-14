@@ -358,6 +358,41 @@ impl super::RPC for WifiOff {
     }
 }
 
+/// Asks the wifi chip whether the station is currently associated with an AP.
+///
+/// Returns the Realtek status code (`wifi_is_connected_to_ap`): `0`
+/// (`RTW_SUCCESS`) while associated, non-zero otherwise. Unlike the IP
+/// configuration reported by `GetIPInfo`, which the chip keeps after the AP is
+/// lost, this reflects the radio link.
+pub struct IsConnectedToAP {}
+
+impl super::RPC for IsConnectedToAP {
+    type ReturnValue = i32;
+    type Error = ();
+
+    fn header(&self, seq: u32) -> codec::Header {
+        codec::Header {
+            sequence: seq,
+            msg_type: ids::MsgType::Invocation,
+            service: ids::Service::Wifi,
+            request: ids::WifiRequest::IsConnectedToAP.into(),
+        }
+    }
+
+    fn parse(&mut self, data: &[u8]) -> Result<Self::ReturnValue, Err<Self::Error>> {
+        let (data, hdr) = codec::Header::parse(data)?;
+        if hdr.msg_type != ids::MsgType::Reply
+            || hdr.service != ids::Service::Wifi
+            || hdr.request != ids::WifiRequest::IsConnectedToAP.into()
+        {
+            return Err(Err::NotOurs);
+        }
+
+        let (_, status) = streaming::le_i32(data)?;
+        Ok(status)
+    }
+}
+
 /// Connects to the network with the provided properties.
 pub struct WifiConnect {
     pub ssid: String<64>,
@@ -438,5 +473,47 @@ mod tests {
         let parsed = GetMacAddress {}.parse(&input_bytes).expect("Parse failed");
 
         assert_eq!(parsed, "01:23:45:67:89:01");
+    }
+
+    fn is_connected_reply(request: u8, status: i32) -> [u8; 12] {
+        let mut reply = [0u8; 12];
+        reply[0] = 2; // MsgType::Reply
+        reply[1] = request;
+        reply[2] = 14; // Service::Wifi
+        reply[8..12].copy_from_slice(&status.to_le_bytes());
+        reply
+    }
+
+    #[test]
+    fn is_connected_to_ap_request_header() {
+        let header = IsConnectedToAP {}.header(7).as_bytes();
+        assert_eq!(header[0], 0); // MsgType::Invocation
+        assert_eq!(header[1], 4); // WifiRequest::IsConnectedToAP
+        assert_eq!(header[2], 14); // Service::Wifi
+        assert_eq!(&header[4..], &7u32.to_le_bytes());
+    }
+
+    #[test]
+    fn is_connected_to_ap_status() {
+        init();
+        // RTW_SUCCESS: associated.
+        assert_eq!(IsConnectedToAP {}.parse(&is_connected_reply(4, 0)), Ok(0));
+        // RTW_ERROR: not associated.
+        assert_eq!(IsConnectedToAP {}.parse(&is_connected_reply(4, -1)), Ok(-1));
+    }
+
+    #[test]
+    fn is_connected_to_ap_ignores_other_replies_and_truncated_data() {
+        init();
+        // A reply to another request must not be taken for ours.
+        assert_eq!(
+            IsConnectedToAP {}.parse(&is_connected_reply(5, 0)),
+            Err(Err::NotOurs)
+        );
+        // Header only, status missing.
+        assert!(matches!(
+            IsConnectedToAP {}.parse(&is_connected_reply(4, 0)[..9]),
+            Err(Err::Parsing(_))
+        ));
     }
 }
